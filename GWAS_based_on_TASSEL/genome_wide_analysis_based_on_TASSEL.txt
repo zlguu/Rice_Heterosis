@@ -1,0 +1,36 @@
+## Genome-wide analysis based on TASSEL
+
+## preparing genotype file
+#### transform vcf format into plink format
+plink --vcf *.vcf --maf 0.05 --geno 0.1 --recode12 --output-missing-genotype 0 --allow-extra-chr --out a 
+####--maf 0.05 only include SNPs with MAF >= 0.05
+####--geno 0.1 include only SNPs with a 90% genotyping rate (10% missing)
+
+## incorporating the first 2PCs as covariates
+plink --map a.map --ped a.ped --make-bed --out a --noweb
+gcta64 --bfile a --make-grm --autosome-num 12 --autosome --out a
+gcta64 --grm a --pca 3 --out a_pca
+awk 'BEGIN{OFS="\t"}{print $1,$3,$4}' a_pca.eigenvec >a_PCA.txt
+#### add head
+<Covariate>
+<Trait>\tQ1\tQ2
+
+## preparing phenotype file
+#### remove outliers in R 
+data1 <- read.table("pheno_a.txt",header=TRUE)
+a <- boxplot(data1$a,plot=FALSE)$out
+#### outliers
+sort(a)
+#### the format of phenotype file: ID\tphenotype
+#### add head
+<Trait>\tGD
+
+
+## constructing kinship matrix in TASSEL
+Analysis	-->	Relatedness	-->	Kinship	-->	default parameter
+
+## combining genotype+phenotype+pca data
+Data	-->	Intersect	Join
+
+## Running
+Pick on kinship_matrix+combinning_data, Analysis	-->	Association	-->	MLM
