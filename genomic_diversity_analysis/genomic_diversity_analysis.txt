@@ -1,0 +1,29 @@
+## nucleotide diversity
+vcftools --vcf total.vcf --recode --recode-INFO-all --keep Y1.list --out Y1
+vcftools --vcf Y1.recode.vcf --window-pi 200000 --keep keep.txt --out Y1_pi_200k
+
+
+## kinship coefficient
+vcftools --vcf total.vcf --recode --recode-INFO-all --keep Y1.list --out Y1
+vcftools --vcf Y1.recode.vcf --maf 0.05 --max-missing 0.9 --recode --recode-INFO-all --out Y1_Fil
+plink --vcf Y1_Fil.recode.vcf --out Y1
+plink --bfile Y1 --recode12 --output-missing-genotype 0 --transpose --out Y1_kin
+emmax-kin -v -h -s -d 10 Y1_kin
+awk '{print $1}' Y1_kin.tfam >Y1.head
+perl kinship_extract.pl Y1.head Y1_kin.hIBS.kinf >Y1_comparison_pairwise.out
+awk -F "\t" '{if($3>0.9)print}' Y1_comparison_pairwise.out >Y1_comparison_pairwise_related.out
+#### allocate cytoplasm type to each sample
+awk '{print $1}' Y1_comparison_pairwise_related.out >temp1 && awk '{print $2}' Y1_comparison_pairwise_related.out >>temp1 && sort temp1 |uniq |while read id;do awk -v value=$id '{if($1==value)print}' cytoplasm.type ;done >Y1_comparison_pairwise_related_type.out
+#### Y1_comparison_pairwise_related.out and Y1_comparison_pairwise_related_type.out were provided to Cytoscape for visualization
+
+
+## admixture
+plink --vcf a.vcf --maf 0.05 --geno 0.1 --recode vcf-iid --out a_fil
+plink --vcf a_fil.vcf --recode 12 transpose --output-missing-genotype 0 --out a_fil --autosome-num 90
+for i in $(seq 1 15);do echo admixture --cv a_fil.ped $i \>\> log.txt \&;done > 1.sh
+
+
+## pca
+plink --map a_fil.map --ped a_fil.ped --make-bed --out a_fil --noweb
+gcta64 --bfile a_fil --make-grm --autosome-num 12 --autosome --out a_fil
+gcta64 --grm a_fil --pca 3 --out a_pca
