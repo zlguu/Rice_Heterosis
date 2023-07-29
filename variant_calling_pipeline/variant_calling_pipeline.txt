@@ -1,0 +1,38 @@
+## snp and indel calling pipeline
+
+##Alignment with Bwa mem
+bwa mem $1 $2 $3 -t 4 -M -R "@RG\tID:${4}ID\tPL:ILLUMINA\tSM:$4" >$5$4.sam
+####$1 reference
+####$2 pair end fastq *_1.fastq
+####$3 pair end fastq *_2.fastq
+####$4 accession name
+####$5 input fasta file path and output path, end up with /
+
+## sam transformed to bam with samtools view
+samtools view -F 0x100 -Sb $5$4.sam >$5$4.bam
+ 
+## bam sorted with gatk SortSam
+gatk SortSam --INPUT $5$4.bam --OUTPUT $5${4}_sort.bam --SORT_ORDER "coordinate"
+
+## MarkDuplicates
+gatk MarkDuplicates --INPUT $5${4}_sort.bam --OUTPUT $5${4}_sort_MDup.bam --METRICS_FILE $5${4}_sort_MDup_metrix.txt --VALIDATION_STRINGENCY SILENT --OPTICAL_DUPLICATE_PIXEL_DISTANCE 100 --ASSUME_SORT_ORDER "coordinate" --CREATE_INDEX true
+
+## HaplotypeCaller
+gatk HaplotypeCaller -R $1 -I $5${4}_sort_MDup.bam -O $5${4}.g.vcf -ERC GVCF"
+
+## database construction
+## take a single chromosome as an example
+ls *.g.vcf >list
+gatk GenomicsDBImport --genomicsdb-workspace-path total_chr01_db --batch-size 100 --reader-threads 2 -L chr01 $(for i in $(cat list);do echo "-V $i";done) 
+gatk GenotypeGVCFs -R $1 -O total_chr01.vcf -V gendb://total_chr01_db -L chr01 --only-output-calls-starting-in-intervals true 2>chr01_nohup.out
+
+## filtration
+ls total_chr*vcf > mergelist
+gatk MergeVcfs -I mergelist -O total.vcf
+gatk SelectVariants -select-type SNP -V total.vcf -O total_SNP.vcf
+gatk VariantFiltration -R $1 --variant total_SNP.vcf --cluster-size 3 --cluster-window-size 10 --filter-expression "QD<10.00" --filter-name lowQD --filter-expression "FS>15.000" --filter-name highFS --genotype-filter-expression "DP>200||DP<5" --genotype-filter-name InvalidDP --filter-expression "AC<3" --filter-name lowAC --output total_SNP_filter.vcf
+
+gatk SelectVariants -select-type INDEL -V total.vcf -O total_InDel.vcf 
+gatk VariantFiltration -R $1 --variant total_InDel.vcf --filter-expression "QD<10.00" --filter-name "lowQD" --genotype-filter-expression "DP<5||DP>200" --genotype-filter-name "Invalid DP" --filter-expression "FS>30.000" --filter-name "hishFS" --output total_InDel_Filter.vcf
+
+
